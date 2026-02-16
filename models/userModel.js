@@ -2,9 +2,7 @@ const mongoose = require("mongoose");
 
 const UserSchema = new mongoose.Schema(
   {
-    fullName: { type: String, required: true },
-
-    username: { type: String, required: true },
+    name: { type: String, required: true },
 
     email: {
       type: String,
@@ -20,7 +18,7 @@ const UserSchema = new mongoose.Schema(
       required: true,
     },
 
-    address: {
+    country: {
       type: String,
       required: true,
     },
@@ -38,54 +36,26 @@ const UserSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: ["user", "reseller", "admin"],
-      default: "user",
+      enum: ["member", "supporter", "premium_member", "admin"],
+      default: "member",
       index: true,
     },
 
-    upgradedToResellerAt: {
-      type: Date,
-      default: null,
-    },
-
-    /* =====================
-       REFERRAL SYSTEM
-    ====================== */
-
-    referralCode: {
+    memberShipNumber: {
       type: String,
       unique: true,
-      index: true,
+      required: true,
     },
 
-    referredBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    referralsCount: {
-      type: Number,
-      default: 0,
-    },
-
-    referralEarnings: {
-      type: Number,
-      default: 0,
-    },
-
-    commissionEarnings: {
-      type: Number,
-      default: 0,
-    },
-
-    hasFunded: {
+    isActive: {
       type: Boolean,
-      default: false,
+      default: true,
     },
 
-    passwordResetToken: String,
-    passwordResetExpires: Date,
+    upgradedAt: Date,
+
+    lastLogin: Date,
+
     passwordChangedAt: Date,
   },
   { timestamps: true },

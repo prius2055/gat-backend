@@ -1,25 +1,24 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const nodemailer = require("nodemailer");
 
 const User = require("../models/userModel");
-const Wallet = require("../models/walletModel");
-const generateReferralCode = require("../utils/utils.js");
-const sgMail = require("@sendgrid/mail");
 
-const signToken = (user) => {
-  return jwt.sign(
+// =============================
+// Helpers
+// =============================
+
+const signToken = (user) =>
+  jwt.sign(
     {
       id: user._id,
-      role: user.role, // ✅ embed role
+      role: user.role,
     },
     process.env.JWT_SECRET,
     {
       expiresIn: process.env.JWT_EXPIRES_IN || "7d",
     },
   );
-};
 
 const createSendToken = (user, statusCode, res) => {
   const token = signToken(user);
@@ -31,166 +30,116 @@ const createSendToken = (user, statusCode, res) => {
     token,
     user: {
       id: user._id,
-      fullName: user.fullName,
+      name: user.name,
       email: user.email,
-      username: user.username,
+      phone: user.phone,
+      country: user.country,
       role: user.role,
-
-      // 🔁 Referral and commission(read-only)
-      referralCode: user.referralCode,
-      referralsCount: user.referralsCount,
-      referralEarnings: user.referralEarnings,
-      commissionEarnings: user.commissionEarnings,
+      memberShipNumber: user.memberShipNumber,
       createdAt: user.createdAt,
     },
   });
 };
 
+const generateUniqueMembershipNumber = async () => {
+  let membershipNumber;
+  let exists = true;
+
+  while (exists) {
+    const randomNumber = Math.floor(1000000000 + Math.random() * 9000000000); // 10 digits
+
+    membershipNumber = `GAT-${randomNumber}`;
+
+    exists = await User.findOne({ memberShipNumber: membershipNumber });
+  }
+
+  return membershipNumber;
+};
+
+// =============================
+// REGISTER
+// =============================
+
 const register = async (req, res) => {
   try {
-    console.log("🔵 REGISTER REQUEST RECEIVED");
-    console.log("📥 Raw Request Body:", req.body);
+    const { name, email, phone, password, country, agreeTerms } = req.body;
 
-    const {
-      fullName,
-      username,
-      email,
-      phone,
-      address,
-      password,
-      referrer, // referralCode
-    } = req.body;
+    // =============================
+    // 1. Validate inputs
+    // =============================
 
-    console.log("🧾 Parsed Fields:", {
-      fullName,
-      username,
-      email,
-      phone,
-      address,
-      referrer,
-      passwordProvided: !!password,
-    });
-
-    // 1️⃣ Validate required fields
-    if (!email || !password || !username) {
-      console.log("❌ Validation failed: missing required fields");
+    if (!name || !email || !phone || !password || !country || !agreeTerms) {
       return res.status(400).json({
         status: "fail",
-        message: "Email, username and password are required",
+        message: "All fields are required",
       });
     }
 
-    // 2️⃣ Check if user exists
-    console.log("🔍 Checking existing user for email:", email);
-    const existingUser = await User.findOne({ email });
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // email format
+    const emailRegex = /\S+@\S+\.\S+/;
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Invalid email address",
+      });
+    }
+
+    // password strength
+    if (password.length < 8) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Password must be at least 8 characters",
+      });
+    }
+
+    // =============================
+    // 2. Check existing user
+    // =============================
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
 
     if (existingUser) {
-      console.log("⚠️ User already exists:", existingUser._id);
-      return res.status(400).json({
+      return res.status(409).json({
         status: "fail",
-        message: "User already exists",
+        message: "Email already registered",
       });
     }
 
-    console.log("✅ No existing user found");
+    // =============================
+    // 3. Hash password
+    // =============================
 
-    // 3️⃣ Hash password
-    console.log("🔐 Hashing password...");
     const hashedPassword = await bcrypt.hash(password, 12);
-    console.log("✅ Password hashed");
+    const memberShipNumber = await generateUniqueMembershipNumber();
 
-    // 4️⃣ Generate unique referral code
-    console.log("🔁 Generating referral code...");
-    let referralCode;
-    let attempts = 0;
+    // =============================
+    // 4. Create user
+    // =============================
 
-    while (true) {
-      referralCode = generateReferralCode();
-      attempts++;
-
-      const exists = await User.findOne({ referralCode });
-      if (!exists) break;
-
-      console.log(
-        `⚠️ Referral code collision detected, retrying (${attempts})`,
-      );
-    }
-
-    console.log("🎟️ Referral code generated:", referralCode);
-
-    // 5️⃣ Handle referrer
-    let referredBy = null;
-
-    if (referrer) {
-      console.log("🔗 Referral code supplied:", referrer);
-      const referrerUser = await User.findOne({ referralCode: referrer });
-
-      if (!referrerUser) {
-        console.log("❌ Invalid referral code:", referrer);
-        return res.status(400).json({
-          status: "fail",
-          message: "Invalid referral code",
-        });
-      }
-
-      referredBy = referrerUser._id;
-      console.log("✅ Referrer found:", {
-        id: referrerUser._id,
-        username: referrerUser.username,
-      });
-    } else {
-      console.log("ℹ️ No referral code provided");
-    }
-
-    // 6️⃣ Create user
-    console.log("🧑 Creating new user...");
-    const user = await User.create({
-      fullName,
-      username,
-      email,
-      phone,
-      address,
+    const newUser = await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      phone: phone.trim(),
       password: hashedPassword,
-      referralCode,
-      referredBy,
-      role: "user",
+      country,
+      agreeTerms,
+      role: "member",
+      memberShipNumber,
     });
 
-    console.log("✅ User created:", {
-      id: user._id,
-      email: user.email,
-      referralCode: user.referralCode,
-      referredBy: user.referredBy,
-    });
+    // =============================
+    // 5. Send token
+    // =============================
 
-    // 7️⃣ Increment referrer count
-    if (referredBy) {
-      console.log("📈 Incrementing referrer count for:", referredBy);
-      await User.findByIdAndUpdate(referredBy, {
-        $inc: { referralsCount: 1 },
-      });
-      console.log("✅ Referrer count updated");
-    }
-
-    // 8️⃣ Create wallet
-    console.log("💰 Creating wallet for user:", user._id);
-    const wallet = await Wallet.create({
-      user: user._id,
-      balance: 0,
-    });
-    console.log("✅ Wallet created:", wallet._id);
-
-    // 9️⃣ Send auth token
-    console.log("🔑 Sending auth token");
-    createSendToken(user, 201, res);
-  } catch (error) {
-    console.error("🔥 REGISTER ERROR OCCURRED");
-    console.error("Message:", error.message);
-    console.error("Stack:", error.stack);
+    createSendToken(newUser, 201, res);
+  } catch (err) {
+    console.error("REGISTER ERROR:", err);
 
     res.status(500).json({
       status: "error",
-      message: "Registration failed",
+      message: "Registration failed. Please try again later.",
     });
   }
 };
@@ -199,34 +148,34 @@ const login = async (req, res) => {
   try {
     console.log("🔐 Login attempt received");
 
-    let { username, password } = req.body;
+    let { email, password } = req.body;
 
     console.log("📩 Request body:", {
-      username,
+      email,
       passwordProvided: !!password,
     });
 
     // 1️⃣ Validate input
-    if (!username || !password) {
-      console.log("❌ Missing username or password");
+    if (!email || !password) {
+      console.log("❌ Missing email or password");
       return res.status(400).json({
         status: "fail",
-        message: "Please provide username and password",
+        message: "Please provide email and password",
       });
     }
 
-    // Normalize username
-    username = username.toLowerCase().trim();
+    // Normalize email
+    email = email.toLowerCase().trim();
 
     // Find user
-    console.log("🔍 Searching for user with username:", username);
-    const user = await User.findOne({ username }).select("+password");
+    console.log("🔍 Searching for user with email:", email);
+    const user = await User.findOne({ email }).select("+password");
 
     if (!user) {
-      console.log("❌ No user found with this username");
+      console.log("❌ No user found with this email");
       return res.status(401).json({
         status: "fail",
-        message: "Incorrect username or password",
+        message: "Incorrect email or password",
       });
     }
 
@@ -234,7 +183,7 @@ const login = async (req, res) => {
 
     console.log("✅ User found:", {
       id: user._id,
-      username: user.username,
+      email: user.email,
       role: user.role,
     });
 
