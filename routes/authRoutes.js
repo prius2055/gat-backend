@@ -16,7 +16,7 @@ router.route("/login").post(login);
 
 // router.route("/me").get(protect, getMe);
 
-router.route("/verify").get(protect, verify);
+// router.route("/verify").get(protect, verify);
 
 // router.route("/password/reset").post(requestPasswordReset);
 // router.route("/password/reset/:token").post(resetPassword);

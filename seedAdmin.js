@@ -3,6 +3,21 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const User = require("./models/userModel"); // adjust path
 
+const generateUniqueMembershipNumber = async () => {
+  let membershipNumber;
+  let exists = true;
+
+  while (exists) {
+    const randomNumber = Math.floor(1000000000 + Math.random() * 9000000000); // 10 digits
+
+    membershipNumber = `GAT-ADMIN${randomNumber}`;
+
+    exists = await User.findOne({ memberShipNumber: membershipNumber });
+  }
+
+  return membershipNumber;
+};
+
 const seedAdmin = async () => {
   try {
     // 1. Connect to database
@@ -20,6 +35,9 @@ const seedAdmin = async () => {
       process.exit(0);
     }
 
+    const email = process.env.ADMIN_EMAIL;
+    const memberShipNumber = await generateUniqueMembershipNumber();
+
     // 3. Hash password
     const password = process.env.ADMIN_PASSWORD;
     const salt = await bcrypt.genSalt(12);
@@ -27,13 +45,14 @@ const seedAdmin = async () => {
 
     // 4. Create admin
     const admin = await User.create({
-      fullName: "Admin User",
-      username: "admin",
-      email: "admin@example.com",
+      name: "Admin",
+      email,
       phone: "08000000000",
-      address: "Admin HQ",
       password: hashedPassword,
+      country: "Nigeria",
+      agreeTerms: true,
       role: "admin",
+      memberShipNumber: memberShipNumber,
     });
 
     console.log("✅ Admin user created:", admin.email);
