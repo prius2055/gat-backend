@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
+const donateRoutes = require("./routes/donateRoutes");
 
 const app = express();
 app.use(cors());
@@ -11,8 +12,9 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use("/api/v1", authRoutes);
 app.use("/api/v1/admin", userRoutes);
+app.use("/api/v1/donate", donateRoutes);
+
 // app.use("/api/v1/vtu", vtuRoutes);
-// app.use("/api/v1/wallet", walletRoutes);
 // app.use("/api/v1/transactions", transactionRoutes);
 
 // app.use("/api/v1/admin", adminRoutes);
